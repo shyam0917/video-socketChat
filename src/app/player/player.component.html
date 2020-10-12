@@ -1,0 +1,22 @@
+<div class="container">
+    <div class="content-container">
+      <div class="active-users-panel" id="active-user-container">
+        <h3 class="panel-title">Active Users:</h3>
+      </div>
+      <div class="video-chat-container">
+        <h2 class="talk-info" id="talking-with-info">
+          Select active user on the left menu.
+        </h2>
+        <div height ="80px" class="video-container">
+          <video controls #remVideo height ="80px" autoplay class="remote-video" id="remote-video"></video>
+          <video autoplay muted class="local-video" id="local-video"></video>
+        </div>
+        <div>
+            <button class="btn btn-primary" (click)="shareScreen()">Share Screen</button>
+            <button class="btn btn-primary" (click)="stopScreen()">Stop Share Screen</button>
+            <!-- <button class="btn btn-primary" (click)="startRecording()">Start Recording</button> -->
+            <button class="btn btn-primary" (click)="stopRecording()">Stop Recording</button>
+        </div>
+      </div>
+    </div>
+  </div>
