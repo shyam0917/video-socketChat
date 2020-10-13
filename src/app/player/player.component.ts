@@ -10,15 +10,17 @@ declare var MediaRecorder: any;
   templateUrl: './player.component.html',
   styleUrls: ['./player.component.css']
 })
-export class PlayerComponent implements OnInit,AfterViewInit {
-  @ViewChild("remVideo") recorderVideo: ElementRef;
+export class PlayerComponent implements OnInit, AfterViewInit {
+  @ViewChild("recorderVideo") recorderVideo: ElementRef;
   private socket = io.connect("localhost:7000");
   public isAlreadyCalling = false;
   public getCalled = false;
   mediaRecorder: any;
+  screenRecorder: any;
   _recorderVideo: any;
   public existingCalls = [];
   recorderedVideo = [];
+
   recordingOptions = {
     mimetype: "video/webm",
     audioBitsPerSecond: 128000,
@@ -83,17 +85,16 @@ export class PlayerComponent implements OnInit,AfterViewInit {
       this.unselectUsersFromList();
     });
 
-    peerConnection.ontrack =  ({ streams: [stream] })=> {
+    peerConnection.ontrack = ({ streams: [stream] }) => {
       const remoteVideo = document.getElementById("remote-video");
       if (remoteVideo) {
         remoteVideo['srcObject'] = stream;
-        (<any>window).stream = stream;
-        this.startRecording(stream);
+        (<any>window).remoteStream = stream;
       }
     };
   }
 
-  ngAfterViewInit(){
+  ngAfterViewInit() {
     this._recorderVideo = this.recorderVideo.nativeElement;
   }
 
@@ -157,6 +158,7 @@ export class PlayerComponent implements OnInit,AfterViewInit {
 
 
   startLocalStreaming() {
+    let options = { mimeType: "video/webm; codecs=vp9" };
     navigator.getUserMedia(
       { video: true, audio: true },
       stream => {
@@ -164,9 +166,15 @@ export class PlayerComponent implements OnInit,AfterViewInit {
         if (localVideo) {
           (<any>window).stream = stream;
           localVideo['srcObject'] = stream;
-
+          this.mediaRecorder = new MediaRecorder((<any>window).stream, options);
+          this.mediaRecorder.ondataavailable = ({ data }) => {
+            if (data.size > 0) {
+              this.recorderedVideo.push(data);
+              // console.log("tt",this.recorderedVideo);
+            }
+          };
+          this.mediaRecorder.start(10);
         }
-
         stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
       },
       error => {
@@ -176,39 +184,62 @@ export class PlayerComponent implements OnInit,AfterViewInit {
   }
 
   shareScreen() {
-      mediaD.getDisplayMedia(
-        { video: true},
-        stream => {
-          const remoteVideo = document.getElementById("remote-video");
-          if (remoteVideo) {
-            remoteVideo['srcObject'] = stream;
-          }
-          stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
-      this.startRecording(stream);
-        },
-        error => {
-          console.warn(error.message);
+    console.log("gg");
+    mediaD.getDisplayMedia(
+      { video: true },
+      stream => {
+        console.log("st",stream);
+        const localVideo = document.getElementById("local-video");
+        if (localVideo) {
+          console.log("st",stream);
+          localVideo['srcObject'] = stream;
+          this._recorderVideo['srcObject'] =stream;
+          (<any>window).screen = stream;
+          this.screenRecorder = new MediaRecorder(stream, { type: "video/webm" });
+          this.screenRecorder.ondataavailable = ({ data }) => {
+            if (data.size > 0) {
+              this.recorderedVideo.push(data);
+              console.log("tt",this.recorderedVideo.length);
+              console.log(data);
+            }
+          };
         }
-      );
+        this.screenRecorder.start(10);
+        stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+
+      },
+      error => {
+        console.warn(error.message);
+      }
+    );
+  }
+
+  stopCameraCapture() {
+    (<any>window).stream.getTracks().forEach(track => {
+      track.stop();
+    });
+    this.mediaRecorder.stop();
   }
 
   stopScreen() {
-
+this.screenRecorder.stop();
+var videoBlob = new Blob(this.recorderedVideo, { type: "video/webm" });
+console.log("vb", videoBlob)
+console.log("tt", window.URL.createObjectURL(videoBlob));
+this._recorderVideo['src'] = window.URL.createObjectURL(videoBlob);
   }
 
-  startRecording(stream) {
-    try {
-      this.mediaRecorder = new MediaRecorder(stream, this.recordingOptions);
-    } catch (err) {
-      console.error(err);
-    }
+  startRecording() {
+
+    let options = { mimeType: 'video/webm' }
+    this.mediaRecorder = new MediaRecorder((<any>window).remoteStream, options);
     this.mediaRecorder.onstop = event => {
       console.log("Recorder Stop: ", event);
     };
     this.mediaRecorder.ondataavailable = ({ data }) => {
       if (data.size > 0) {
         this.recorderedVideo.push(data);
-        console.log("tt",this.recorderedVideo);
+        console.log("tt", this.recorderedVideo);
         // console.log(this.recorderedVideo);
       }
     };
@@ -216,23 +247,20 @@ export class PlayerComponent implements OnInit,AfterViewInit {
     console.log("Started Recording video", this.mediaRecorder);
   }
 
-  stopRecording(){
-    (<any>window).stream.getTracks().forEach(function(track) {
-      if (track.readyState == 'live') {
-          track.stop();
-      }
-  });
-    // (<any>window).stream.getTracks().forEach(track => {
-    //   track.stop();
+  stopRecording() {
+    //   (<any>window).stream.getTracks().forEach(function(track) {
+    //     if (track.readyState == 'live') {
+    //         track.stop();
+    //     }
     // });
+    (<any>window).stream.getTracks().forEach(track => {
+      track.stop();
+    });
     this.mediaRecorder.stop();
-    const localVideo = document.getElementById("remote-video");
-    if(localVideo){
-    var videoBlob = new Blob(this.recorderedVideo, { type: "video/webm;" });
-    console.log("vb",videoBlob)
-    alert("Stopped Recording Video");
-    // localVideo['src'] = window.URL.createObjectURL(videoBlob);
-    }
+    var videoBlob = new Blob(this.recorderedVideo, { type: "video/webm" });
+    console.log("vb", videoBlob)
+    console.log("tt", window.URL.createObjectURL(videoBlob));
+    this._recorderVideo['src'] = window.URL.createObjectURL(videoBlob);
   }
 
 

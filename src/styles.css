@@ -45,6 +45,7 @@ body {
   .active-users-panel {
     width: 300px;
     height: 100%;
+    overflow: scroll;
     border-right: 1px solid #cddfe7;
   }
   

@@ -8,7 +8,7 @@
           Select active user on the left menu.
         </h2>
         <div height ="80px" class="video-container">
-          <video controls #remVideo height ="80px" autoplay class="remote-video" id="remote-video"></video>
+          <video height ="80px" autoplay class="remote-video" id="remote-video"></video>
           <video autoplay muted class="local-video" id="local-video"></video>
         </div>
         <div>
@@ -16,6 +16,7 @@
             <button class="btn btn-primary" (click)="stopScreen()">Stop Share Screen</button>
             <!-- <button class="btn btn-primary" (click)="startRecording()">Start Recording</button> -->
             <button class="btn btn-primary" (click)="stopRecording()">Stop Recording</button>
+            <video #recorderVideo width="20%" height="80%" controls></video>
         </div>
       </div>
     </div>
