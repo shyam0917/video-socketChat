@@ -1,14 +1,17 @@
 import { Component, OnInit, AfterViewInit, ElementRef, ViewChild } from '@angular/core';
 import * as io from 'socket.io-client';
+import { ChatService } from '../chat.service';
 const { RTCPeerConnection, RTCSessionDescription } = window;
 const peerConnection = new RTCPeerConnection();
 const mediaD = navigator.mediaDevices as any;
 declare var MediaRecorder: any;
+// declare var MultiStreamRecorder: any;
 
 @Component({
   selector: 'app-player',
   templateUrl: './player.component.html',
-  styleUrls: ['./player.component.css']
+  styleUrls: ['./player.component.css'],
+  providers: [ChatService]
 })
 export class PlayerComponent implements OnInit, AfterViewInit {
   @ViewChild("recorderVideo") recorderVideo: ElementRef;
@@ -17,16 +20,33 @@ export class PlayerComponent implements OnInit, AfterViewInit {
   public getCalled = false;
   mediaRecorder: any;
   screenRecorder: any;
+  displayMediaStream: any;
   _recorderVideo: any;
   public existingCalls = [];
   recorderedVideo = [];
+  public senders = [];
 
   recordingOptions = {
     mimetype: "video/webm",
     audioBitsPerSecond: 128000,
     videoBitsPerSecond: 250000
   };
-  constructor() { }
+
+  user: String;
+  room: '131921';
+  messageText: String;
+  messageArray: Array<{ user: String, message: String }> = [];
+  constructor(private _chatService: ChatService) { 
+    this._chatService.newUserJoined()
+    .subscribe(data => this.messageArray.push(data));
+
+
+  this._chatService.userLeftRoom()
+    .subscribe(data => this.messageArray.push(data));
+
+  this._chatService.newMessageReceived()
+    .subscribe(data => this.messageArray.push(data));
+  }
 
   ngOnInit(): void {
     this.startLocalStreaming();
@@ -89,9 +109,12 @@ export class PlayerComponent implements OnInit, AfterViewInit {
       const remoteVideo = document.getElementById("remote-video");
       if (remoteVideo) {
         remoteVideo['srcObject'] = stream;
-        (<any>window).remoteStream = stream;
+        // this.startRecording(stream);
       }
     };
+
+    this.room = '131921';
+    this.join();
   }
 
   ngAfterViewInit() {
@@ -166,16 +189,17 @@ export class PlayerComponent implements OnInit, AfterViewInit {
         if (localVideo) {
           (<any>window).stream = stream;
           localVideo['srcObject'] = stream;
-          this.mediaRecorder = new MediaRecorder((<any>window).stream, options);
-          this.mediaRecorder.ondataavailable = ({ data }) => {
-            if (data.size > 0) {
-              this.recorderedVideo.push(data);
-              // console.log("tt",this.recorderedVideo);
-            }
-          };
-          this.mediaRecorder.start(10);
+          this.startRecording(stream);
+          // this.mediaRecorder = new MediaRecorder((<any>window).stream, options);
+          // this.mediaRecorder.ondataavailable = ({ data }) => {
+          //   if (data.size > 0) {
+          //     this.recorderedVideo.push(data);
+          //     // console.log("tt",this.recorderedVideo);
+          //   }
+          // };
+          // this.mediaRecorder.start(10);
         }
-        stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+        stream.getTracks().forEach(track => this.senders.push(peerConnection.addTrack(track, stream)));
       },
       error => {
         console.warn(error.message);
@@ -183,35 +207,36 @@ export class PlayerComponent implements OnInit, AfterViewInit {
     );
   }
 
-  shareScreen() {
-    console.log("gg");
-    mediaD.getDisplayMedia(
-      { video: true },
-      stream => {
-        console.log("st",stream);
-        const localVideo = document.getElementById("local-video");
-        if (localVideo) {
-          console.log("st",stream);
-          localVideo['srcObject'] = stream;
-          this._recorderVideo['srcObject'] =stream;
-          (<any>window).screen = stream;
-          this.screenRecorder = new MediaRecorder(stream, { type: "video/webm" });
-          this.screenRecorder.ondataavailable = ({ data }) => {
-            if (data.size > 0) {
-              this.recorderedVideo.push(data);
-              console.log("tt",this.recorderedVideo.length);
-              console.log(data);
-            }
-          };
-        }
-        this.screenRecorder.start(10);
-        stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+  async shareScreen() {
+    if (!this.displayMediaStream) {
+      this.displayMediaStream = await mediaD.getDisplayMedia({ video: true, audio: true });
+    }
+    (<any>window).screen = this.displayMediaStream;
+    this.senders.find(sender => sender.track.kind === 'video').replaceTrack(this.displayMediaStream.getTracks()[0]);
+    const localVideo = document.getElementById("local-video");
+    localVideo['srcObject'] = this.displayMediaStream;
+    (<any>window).stream.getTracks().forEach(track => {
+      track.stop();
+    });
 
-      },
-      error => {
-        console.warn(error.message);
-      }
-    );
+
+    // let options = { mimeType: "video/webm" };
+    // this.screenRecorder = new MediaRecorder(this.displayMediaStream, options);
+    // this.screenRecorder.onstop = event => {
+    //   console.log("Recorderscreen Stop: ", event);
+    // };
+    // this.screenRecorder.ondataavailable = ({ data }) => {
+    //   if (data.size > 0) {
+    //     this.recorderedVideo.push(data);
+    //     console.log("tttty", this.recorderedVideo);
+    //     // console.log(this.recorderedVideo);
+    //   }
+    // };
+    // this.screenRecorder.start(10);
+
+
+
+
   }
 
   stopCameraCapture() {
@@ -221,18 +246,30 @@ export class PlayerComponent implements OnInit, AfterViewInit {
     this.mediaRecorder.stop();
   }
 
-  stopScreen() {
-this.screenRecorder.stop();
-var videoBlob = new Blob(this.recorderedVideo, { type: "video/webm" });
-console.log("vb", videoBlob)
-console.log("tt", window.URL.createObjectURL(videoBlob));
-this._recorderVideo['src'] = window.URL.createObjectURL(videoBlob);
+  async stopScreen() {
+    this.senders.find(sender => sender.track.kind === 'video')
+      .replaceTrack((<any>window).stream.getTracks().find(track => track.kind === 'video'));
+    const localVideo = document.getElementById("local-video");
+    localVideo['srcObject'] = (<any>window).stream;
+    // this.screenRecorder.stop();
+
+    // var videoBlob = new Blob(this.recorderedVideo, { type: "video/webm" });
+    // console.log("vb", videoBlob)
+    // console.log("tt", window.URL.createObjectURL(videoBlob));
+    // this._recorderVideo['src'] = window.URL.createObjectURL(videoBlob);
   }
 
-  startRecording() {
-
-    let options = { mimeType: 'video/webm' }
-    this.mediaRecorder = new MediaRecorder((<any>window).remoteStream, options);
+  startRecording(st) {
+    // var multiStreamRecorder = new MultiStreamRecorder(this.senders);
+    // multiStreamRecorder.ondataavailable = function(blob) {
+    //   this.recorderedVideo.push(blob);
+      // var blobURL = URL.createObjectURL(blob);
+      // document.write('<a href="' + blobURL + '">' + blobURL + '</a>');
+  // };
+  // multiStreamRecorder.start(3000);
+  let options = { mimeType: "video/webm" };
+  const stream = new MediaStream((<any>window).stream);
+    this.mediaRecorder = new MediaRecorder(stream, options);
     this.mediaRecorder.onstop = event => {
       console.log("Recorder Stop: ", event);
     };
@@ -244,25 +281,38 @@ this._recorderVideo['src'] = window.URL.createObjectURL(videoBlob);
       }
     };
     this.mediaRecorder.start(10);
-    console.log("Started Recording video", this.mediaRecorder);
+    // console.log("Started Recording video", this.mediaRecorder);
   }
 
   stopRecording() {
-    //   (<any>window).stream.getTracks().forEach(function(track) {
-    //     if (track.readyState == 'live') {
-    //         track.stop();
-    //     }
-    // });
-    (<any>window).stream.getTracks().forEach(track => {
-      track.stop();
+      (<any>window).stream.getTracks().forEach(function(track) {
+        if (track.readyState == 'live') {
+            track.stop();
+        }
     });
-    this.mediaRecorder.stop();
+    // (<any>window).stream.getTracks().forEach(track => {
+    //   track.stop();
+    // });
+    // this.mediaRecorder.stop();
+    // console.log("tt",this.senders);
     var videoBlob = new Blob(this.recorderedVideo, { type: "video/webm" });
     console.log("vb", videoBlob)
     console.log("tt", window.URL.createObjectURL(videoBlob));
     this._recorderVideo['src'] = window.URL.createObjectURL(videoBlob);
   }
 
+
+  join() {
+    this._chatService.joinRoom({ user: 'Aman', room: this.room });
+  }
+
+  leave() {
+    this._chatService.leaveRoom({ user: 'Aman', room: this.room });
+  }
+
+  sendMessage() {
+    this._chatService.sendMessage({ user: 'Aman', room: this.room, message: this.messageText });
+  }
 
 
 }
